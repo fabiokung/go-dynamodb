@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"github.com/bmizerany/aws4"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"reflect"
 	"strconv"
@@ -144,7 +143,6 @@ func (t *Table) PutItem(item interface{}) error {
 	if err != nil {
 		return err
 	}
-	log.Println(string(body))
 
 	req, err := http.NewRequest("POST", t.region.url(), ioutil.NopCloser(bytes.NewReader(body)))
 	if err != nil {
