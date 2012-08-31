@@ -67,3 +67,7 @@ func TestPutRequestFloatSerialization(t *testing.T) {
 		"{\"N1\":{\"N\":\"123.4567\"},\"N2\":{\"N\":\"987654321.1234568\"}}",
 		string(data))
 }
+
+func TestPutRequestBinarySerialization(t *testing.T) {
+	t.Error("pending")
+}
