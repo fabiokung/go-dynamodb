@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"encoding/json"
 	"github.com/bmizerany/aws4"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/http/httputil"
 	"time"
 )
+
+const iSO8601BasicFormat = "20060102T150405Z"
 
 type Region struct {
 	name     string
@@ -40,45 +43,44 @@ func NewTable(name string, region *Region, awsAccessKeyId string, awsSecretAcces
 	return &Table{name, region, k, s}
 }
 
+type PutItemRequest struct {
+	TableName string
+	Item interface{}
+}
+
 func (t *Table) PutItem(item interface{}) (resp *http.Response, err error) {
-	buffer := new(bytes.Buffer)
-	encoder := json.NewEncoder(buffer)
-
-	data := map[string]interface{}{
-		"TableName": t.name,
-		"Item":         item,
+	data := PutItemRequest{TableName: t.name, Item: item}
+	body, err := json.Marshal(data)
+	if err != nil {
+		return
 	}
-	err = encoder.Encode(data)
+	log.Println(string(body))
+
+	req, err := http.NewRequest("POST", t.region.url(), ioutil.NopCloser(bytes.NewReader(body)))
 	if err != nil {
 		return
 	}
 
-	req, err := http.NewRequest("POST", t.region.url(), buffer)
-	if err != nil {
-		return
-	}
-
-	date := time.Now().UTC().Format(http.TimeFormat)
-	req.ContentLength = 0
-	req.Header.Add("Host", t.region.endpoint)
-	req.Header.Add("x-amz-target", "DynamoDB_20111205.PutItem")
-	req.Header.Add("x-amz-date", date)
-	req.Header.Add("Date", date)
-	req.Header.Add("Content-Type", "application/x-amz-json-1.0")
-	req.Header.Add("Connection", "Keep-Alive")
+	req.ContentLength = int64(len(body))
+	req.Header.Set("Host", t.region.endpoint)
+	req.Header.Set("X-Amz-Target", "DynamoDB_20111205.PutItem")
+	req.Header.Set("X-Amz-Date", time.Now().UTC().Format(iSO8601BasicFormat))
+	req.Header.Set("Date", time.Now().UTC().Format(http.TimeFormat))
+	req.Header.Set("Content-Type", "application/x-amz-json-1.0")
+	req.Header.Set("Connection", "Keep-Alive")
 
 	err = t.service.Sign(t.keys, req)
 	if err != nil {
 		return
 	}
 
-	resp, err = http.DefaultClient.Do(req)
-
-	dump, err := httputil.DumpRequest(req, true)
+	dump, err := httputil.DumpRequestOut(req, true)
 	if err != nil {
 		return
 	}
 	log.Println("\n", string(dump))
+
+	resp, err = http.DefaultClient.Do(req)
 
 	return
 }
