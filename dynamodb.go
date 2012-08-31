@@ -104,11 +104,11 @@ func fieldToDynamoString(v reflect.Value) (typeId string, value string, err erro
 	return "", "", &json.MarshalerError{Type: v.Type()}
 }
 
-func (i *PutRequestItem) MarshalJSON() ([]byte, error) {
+func (i PutRequestItem) MarshalJSON() ([]byte, error) {
 	var out bytes.Buffer
 
 	v := reflect.ValueOf(i.Value)
-	if v.Kind() == reflect.Interface || v.Kind() == reflect.Ptr {
+	for v.Kind() == reflect.Interface || v.Kind() == reflect.Ptr {
 		v = v.Elem()
 	}
 
