@@ -12,7 +12,7 @@ type PutRequestWithString struct {
 
 func TestPutRequestStringSerialization(t *testing.T) {
 	value := &PutRequestWithString{"some text"}
-	item := PutRequestItem{value}
+	item := putRequestItem{value}
 	data, err := json.Marshal(&item)
 	if err != nil {
 		t.Fatal(err)
@@ -37,7 +37,7 @@ type PutRequestWithInt struct {
 
 func TestPutRequestIntSerialization(t *testing.T) {
 	value := &PutRequestWithInt{12, 34, 56, 78, 90, 11, 21, 31, 41, 51}
-	item := PutRequestItem{value}
+	item := putRequestItem{value}
 	data, err := json.Marshal(&item)
 	if err != nil {
 		t.Fatal(err)
@@ -57,7 +57,7 @@ type PutRequestWithFloat struct {
 
 func TestPutRequestFloatSerialization(t *testing.T) {
 	value := &PutRequestWithFloat{123.4567, 987654321.123456789}
-	item := PutRequestItem{value}
+	item := putRequestItem{value}
 	data, err := json.Marshal(&item)
 	if err != nil {
 		t.Fatal(err)
