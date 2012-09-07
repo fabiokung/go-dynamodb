@@ -71,3 +71,39 @@ func TestPutRequestFloatSerialization(t *testing.T) {
 func TestPutRequestBinarySerialization(t *testing.T) {
 	t.Error("pending")
 }
+
+func TestGetRequestSerialization(t *testing.T) {
+	table := &Table{name: "RDepotTable"}
+	requestBody, err := table.queryRequestBody("myPrimaryKey", 0, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	assert.Equal(t,
+		`{"TableName":"RDepotTable","HashKeyValue":{"S":"myPrimaryKey"}}`,
+		string(requestBody))
+}
+
+func TestGetRequestSerializationWithLimit(t *testing.T) {
+	table := &Table{name: "RDepotTable"}
+	requestBody, err := table.queryRequestBody("myPrimaryKey", 10, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	assert.Equal(t,
+		`{"TableName":"RDepotTable","Limit":10,"HashKeyValue":{"S":"myPrimaryKey"}}`,
+		string(requestBody))
+}
+
+func TestGetRequestSerializationWithConsistentRead(t *testing.T) {
+	table := &Table{name: "RDepotTable"}
+	requestBody, err := table.queryRequestBody("myPrimaryKey", 0, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	assert.Equal(t,
+		`{"TableName":"RDepotTable","ConsistentRead":true,"HashKeyValue":{"S":"myPrimaryKey"}}`,
+		string(requestBody))
+}

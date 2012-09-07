@@ -3,9 +3,34 @@ package dynamodb
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"strconv"
+	"strings"
 )
+
+type queryRequest struct {
+	TableName      string
+	Limit          int  `json:",omitempty"`
+	ConsistentRead bool `json:",omitempty"`
+	HashKeyValue   map[string]string
+}
+
+func (t *Table) queryRequestBody(key interface{}, limit int, consistent bool) ([]byte, error) {
+	v := reflect.ValueOf(key)
+	typeId, value, err := fieldToDynamoString(v)
+	if err != nil {
+		return []byte(""), err
+	}
+
+	request := &queryRequest{
+		TableName:      t.name,
+		Limit:          limit,
+		ConsistentRead: consistent,
+		HashKeyValue:   make(map[string]string)}
+	request.HashKeyValue[typeId] = value
+	return json.Marshal(request)
+}
 
 type putItemRequest struct {
 	TableName string
@@ -55,6 +80,46 @@ func (i putRequestItem) MarshalJSON() ([]byte, error) {
 	return out.Bytes(), nil
 }
 
+func dynamoItemToMap(item map[string]interface{}) (map[string]interface{}, error) {
+	result := make(map[string]interface{}, len(item))
+	for name, raw := range item {
+		attr := raw.(map[string]interface{})
+
+		var value interface{}
+		if v, ok := attr["S"]; ok {
+			value = v.(string)
+		} else if v, ok := attr["N"]; ok {
+			var err error
+			value, err = parseNumber(v.(string))
+			if err != nil {
+				return result, err
+			}
+		} else if v, ok := attr["B"]; ok {
+			value = []byte(v.(string))
+		} else {
+			var first string
+			for k, _ := range attr {
+				first = k
+				break
+			}
+			return result, &UnsupportedTypeError{TypeId: first}
+		}
+
+		result[name] = value
+	}
+
+	return result, nil
+}
+
+func parseNumber(value string) (number interface{}, err error) {
+	if strings.Contains(value, ".") {
+		number, err = strconv.ParseFloat(value, 64)
+	} else {
+		number, err = strconv.ParseInt(value, 10, 64)
+	}
+	return
+}
+
 func fieldToDynamoString(v reflect.Value) (typeId string, value string, err error) {
 	if v.Kind() == reflect.Interface || v.Kind() == reflect.Ptr {
 		v = v.Elem()
@@ -95,4 +160,12 @@ func fieldToDynamoString(v reflect.Value) (typeId string, value string, err erro
 	}
 
 	return "", "", &json.MarshalerError{Type: v.Type()}
+}
+
+type UnsupportedTypeError struct {
+	TypeId string
+}
+
+func (err *UnsupportedTypeError) Error() string {
+	return fmt.Sprintf("Dynamo type %s is currently unsupported", err.TypeId)
 }

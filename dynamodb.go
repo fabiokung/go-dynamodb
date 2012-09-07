@@ -2,6 +2,7 @@ package dynamodb
 
 import (
 	"bytes"
+	"encoding/json"
 	"github.com/bmizerany/aws4"
 	"io/ioutil"
 	"net/http"
@@ -46,14 +47,53 @@ func (t *Table) PutItem(item interface{}) error {
 		return err
 	}
 
-	req, err := http.NewRequest("POST", t.region.url(), ioutil.NopCloser(bytes.NewReader(body)))
+	_, err = t.doDynamoRequest("PutItem", body)
 	if err != nil {
 		return err
 	}
 
+	return nil
+}
+
+func (t *Table) Query(key interface{}, limit int, consistent bool) ([]map[string]interface{}, error) {
+	body, err := t.queryRequestBody(key, limit, consistent)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := t.doDynamoRequest("Query", body)
+	if err != nil {
+		return nil, err
+	}
+
+	data := make(map[string]interface{})
+	err = json.Unmarshal(resp, &data)
+	if err != nil {
+		return nil, err
+	}
+
+	items := data["Items"].([]interface{})
+	parsed := make([]map[string]interface{}, len(items))
+	for i, raw := range items {
+		item := raw.(map[string]interface{})
+		parsed[i], err = dynamoItemToMap(item)
+		if err != nil {
+			return parsed, err
+		}
+	}
+
+	return parsed, nil
+}
+
+func (t *Table) doDynamoRequest(operation string, body []byte) ([]byte, error) {
+	req, err := http.NewRequest("POST", t.region.url(), ioutil.NopCloser(bytes.NewReader(body)))
+	if err != nil {
+		return nil, err
+	}
+
 	req.ContentLength = int64(len(body))
 	req.Header.Set("Host", t.region.endpoint)
-	req.Header.Set("X-Amz-Target", "DynamoDB_20111205.PutItem")
+	req.Header.Set("X-Amz-Target", "DynamoDB_20111205."+operation)
 	req.Header.Set("X-Amz-Date", time.Now().UTC().Format(iSO8601BasicFormat))
 	req.Header.Set("Date", time.Now().UTC().Format(http.TimeFormat))
 	req.Header.Set("Content-Type", "application/x-amz-json-1.0")
@@ -61,21 +101,21 @@ func (t *Table) PutItem(item interface{}) error {
 
 	err = t.service.Sign(t.keys, req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	defer resp.Body.Close()
+	body, err = ioutil.ReadAll(resp.Body)
 	if resp.StatusCode != 200 {
-		body, _ := ioutil.ReadAll(resp.Body)
-		return RequestError{Status: resp.Status, Message: string(body)}
+		return body, RequestError{Status: resp.Status, Message: string(body)}
 	}
 
-	return nil
+	return body, err
 }
 
 type RequestError struct {
