@@ -94,7 +94,6 @@ func (t *Table) doDynamoRequest(operation string, body []byte) ([]byte, error) {
 	req.ContentLength = int64(len(body))
 	req.Header.Set("Host", t.region.endpoint)
 	req.Header.Set("X-Amz-Target", "DynamoDB_20111205."+operation)
-	req.Header.Set("X-Amz-Date", time.Now().UTC().Format(iSO8601BasicFormat))
 	req.Header.Set("Date", time.Now().UTC().Format(http.TimeFormat))
 	req.Header.Set("Content-Type", "application/x-amz-json-1.0")
 	req.Header.Set("Connection", "Keep-Alive")
