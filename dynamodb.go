@@ -4,12 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"github.com/bmizerany/aws4"
+	"log"
 	"io/ioutil"
 	"net/http"
+	"net/http/httputil"
 	"time"
 )
-
-const iSO8601BasicFormat = "20060102T150405Z"
 
 type Region struct {
 	name     string
@@ -41,13 +41,23 @@ func NewTable(name string, region *Region, awsAccessKeyId string, awsSecretAcces
 	return &Table{name, region, k, s}
 }
 
-func (t *Table) PutItem(item interface{}) error {
-	body, err := t.putItemRequestBody(item)
+func (t *Table) UpdateItem(key interface{}, item map[string]interface{}) error {
+	k, err := NewField(key)
+	if err != nil {
+		return err
+	}
+	attrs, err := valuesToAttributeMap(item)
 	if err != nil {
 		return err
 	}
 
-	_, err = t.doDynamoRequest("PutItem", body)
+	r := new(UpdateItemRequest)
+	r.TableName = t.name
+	r.Key = Key{HashKeyElement: k}
+	r.AttributeUpdates = attrs
+	r.ReturnValues = "UPDATED_OLD"
+
+	_, err = t.doDynamoRequest("PutItem", r)
 	if err != nil {
 		return err
 	}
@@ -55,46 +65,48 @@ func (t *Table) PutItem(item interface{}) error {
 	return nil
 }
 
-func (t *Table) Query(key interface{}, limit int, consistent bool) ([]map[string]interface{}, error) {
-	body, err := t.queryRequestBody(key, limit, consistent)
+func (t *Table) Query(key interface{}, consistent bool) ([]map[string]interface{}, error) {
+	k, err := NewField(key)
 	if err != nil {
 		return nil, err
 	}
 
-	resp, err := t.doDynamoRequest("Query", body)
+	r := new(QueryRequest)
+	r.TableName = t.name
+	r.HashKeyValue = k
+	r.ConsistentRead = consistent
+
+
+	rawResp, err := t.doDynamoRequest("Query", r)
+	if err != nil {
+		return nil, err
+	}
+	resp := new(QueryResponse)
+	err = json.Unmarshal(rawResp, &resp)
 	if err != nil {
 		return nil, err
 	}
 
-	data := make(map[string]interface{})
-	err = json.Unmarshal(resp, &data)
-	if err != nil {
-		return nil, err
+	items := make([]map[string]interface{}, len(resp.Items))
+	for i, item := range resp.Items {
+		items[i] = item.Map()
 	}
-
-	items := data["Items"].([]interface{})
-	parsed := make([]map[string]interface{}, len(items))
-	for i, raw := range items {
-		item := raw.(map[string]interface{})
-		parsed[i], err = dynamoItemToMap(item)
-		if err != nil {
-			return parsed, err
-		}
-	}
-
-	return parsed, nil
+	return items, nil
 }
 
-func (t *Table) doDynamoRequest(operation string, body []byte) ([]byte, error) {
-	req, err := http.NewRequest("POST", t.region.url(), ioutil.NopCloser(bytes.NewReader(body)))
+func (t *Table) doDynamoRequest(operation string, body interface{}) ([]byte, error) {
+	var b bytes.Buffer
+	if err := json.NewEncoder(&b).Encode(body); err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", t.region.url(), &b)
 	if err != nil {
 		return nil, err
 	}
 
-	req.ContentLength = int64(len(body))
-	req.Header.Set("Host", t.region.endpoint)
-	req.Header.Set("X-Amz-Target", "DynamoDB_20111205."+operation)
 	req.Header.Set("Date", time.Now().UTC().Format(http.TimeFormat))
+	req.Header.Set("X-Amz-Target", "DynamoDB_20111205."+operation)
 	req.Header.Set("Content-Type", "application/x-amz-json-1.0")
 	req.Header.Set("Connection", "Keep-Alive")
 
@@ -103,18 +115,24 @@ func (t *Table) doDynamoRequest(operation string, body []byte) ([]byte, error) {
 		return nil, err
 	}
 
+	out, err := httputil.DumpRequestOut(req, true)
+	if err != nil {
+		return nil, err
+	}
+	log.Println(string(out))
+
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
 
 	defer resp.Body.Close()
-	body, err = ioutil.ReadAll(resp.Body)
+	respBody, err := ioutil.ReadAll(resp.Body)
 	if resp.StatusCode != 200 {
-		return body, RequestError{Status: resp.Status, Message: string(body)}
+		return respBody, RequestError{Status: resp.Status, Message: string(respBody)}
 	}
 
-	return body, err
+	return respBody, err
 }
 
 type RequestError struct {

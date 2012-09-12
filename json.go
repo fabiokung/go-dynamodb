@@ -1,7 +1,6 @@
 package dynamodb
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"reflect"
@@ -9,93 +8,175 @@ import (
 	"strings"
 )
 
-type queryRequest struct {
-	TableName      string
-	Limit          int  `json:",omitempty"`
-	ConsistentRead bool `json:",omitempty"`
-	HashKeyValue   map[string]string
+type Key struct {
+	HashKeyElement  Field
+	RangeKeyElement Field `json:",omitempty"`
 }
 
-func (t *Table) queryRequestBody(key interface{}, limit int, consistent bool) ([]byte, error) {
-	v := reflect.ValueOf(key)
-	typeId, value, err := fieldToDynamoString(v)
-	if err != nil {
-		return []byte(""), err
-	}
-
-	request := &queryRequest{
-		TableName:      t.name,
-		Limit:          limit,
-		ConsistentRead: consistent,
-		HashKeyValue:   make(map[string]string)}
-	request.HashKeyValue[typeId] = value
-	return json.Marshal(request)
+type Field interface {
+	Type() string
+	Value() interface{}
 }
 
-type putItemRequest struct {
-	TableName string
-	Item      putRequestItem
+type Number struct {
+	N interface{} `json:",string"`
 }
 
-func (t *Table) putItemRequestBody(item interface{}) ([]byte, error) {
-	data := putItemRequest{TableName: t.name, Item: putRequestItem{&item}}
-	return json.Marshal(data)
+func (n *Number) Type() string {
+	return "N"
 }
 
-type putRequestItem struct {
-	Value interface{}
+func (n *Number) Value() interface{} {
+	return n.N
 }
 
-func (i putRequestItem) MarshalJSON() ([]byte, error) {
-	var out bytes.Buffer
+type String struct {
+	S string
+}
 
-	v := reflect.ValueOf(i.Value)
-	for v.Kind() == reflect.Interface || v.Kind() == reflect.Ptr {
+func (s *String) Type() string {
+	return "S"
+}
+
+func (s *String) Value() interface{} {
+	return s.S
+}
+
+type Byte struct {
+	B []byte `json:",string"`
+}
+
+func (b *Byte) Type() string {
+	return "B"
+}
+
+func (b *Byte) Value() interface{} {
+	return b.B
+}
+
+func NewField(value interface{}) (Field, error) {
+	v := reflect.ValueOf(value)
+	if v.Kind() == reflect.Interface || v.Kind() == reflect.Ptr {
 		v = v.Elem()
 	}
 
-	t := v.Type()
+	switch v.Kind() {
+	case reflect.String:
+		return &String{S: value.(string)}, nil
 
-	out.WriteString("{")
-	for i := 0; i < v.NumField(); i++ {
-		f := v.Field(i)
-		out.WriteString("\"" + t.Field(i).Name + "\":")
-
-		typeId, fieldVal, err := fieldToDynamoString(f)
-		if err != nil {
-			return []byte(""), err
-		}
-
-		out.WriteString("{")
-		out.WriteString("\"" + typeId + "\":")
-		out.WriteString("\"" + fieldVal + "\"")
-		out.WriteString("}")
-
-		if i < v.NumField()-1 {
-			out.WriteString(",")
-		}
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32,
+		reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16,
+		reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64:
+		return &Number{N: value}, nil
 	}
-	out.WriteString("}")
 
-	return out.Bytes(), nil
+	// TODO: []byte
+
+	return nil, &json.MarshalerError{Type: v.Type()}
 }
 
-func dynamoItemToMap(item map[string]interface{}) (map[string]interface{}, error) {
-	result := make(map[string]interface{}, len(item))
+// UpdateItem
+
+type UpdateItemRequest struct {
+	TableName        string
+	Key              Key
+	AttributeUpdates map[string]Attribute
+	Expected         map[string]Attribute `json:",omitempty"`
+	ReturnValues     string
+}
+
+type Attribute struct {
+	Value Field
+}
+
+func valuesToAttributeMap(item map[string]interface{}) (map[string]Attribute, error) {
+	attrs := make(map[string]Attribute, len(item))
+	for n, v := range item {
+		f, err := NewField(v)
+		if err != nil {
+			return nil, err
+		}
+
+		attrs[n] = Attribute{Value: f}
+	}
+	return attrs, nil
+}
+
+func attributeMapToValues(attrs map[string]Attribute) map[string]interface{} {
+	item := make(map[string]interface{}, len(attrs))
+	for n, a := range attrs {
+		item[n] = a.Value.Value()
+	}
+	return item
+}
+
+// Query
+
+type QueryRequest struct {
+	TableName         string
+	HashKeyValue      Field
+	ConsistentRead    bool            `json:",omitempty"`
+	ScanIndexForward  bool            `json:",omitempty"`
+	RangeKeyCondition QueryAttributes `json:",omitempty"`
+	Limit             int             `json:",omitempty"`
+	ExclusiveStartKey Key             `json:",omitempty"`
+	AttributesToGet   []string        `json:",omitempty"`
+}
+
+type QueryAttributes struct {
+	AttributeValueList []Field
+	ComparisonOperator string
+}
+
+type QueryResponse struct {
+	Count                 int
+	Items                 []QueryItem
+	LastEvaluatedKey      Key
+	ConsumedCapacityUnits int
+}
+
+type QueryItem struct {
+	Item map[string]Field
+}
+
+func (qi *QueryItem) Map() map[string]interface{} {
+	r := make(map[string]interface{}, len(qi.Item))
+	for n, f := range qi.Item {
+		r[n] = f.Value()
+	}
+	return r
+}
+
+func (q *QueryItem) UnmarshalJSON(data []byte) error {
+	var items map[string]interface{}
+	if err := json.Unmarshal(data, &items); err != nil {
+		return err
+	}
+
+	fields, err := itemsToFields(items)
+	if err != nil {
+		return err
+	}
+	q.Item = fields
+	return nil
+}
+
+func itemsToFields(item map[string]interface{}) (map[string]Field, error) {
+	result := make(map[string]Field, len(item))
 	for name, raw := range item {
 		attr := raw.(map[string]interface{})
 
-		var value interface{}
+		var value Field
 		if v, ok := attr["S"]; ok {
-			value = v.(string)
+			value = &String{S: v.(string)}
 		} else if v, ok := attr["N"]; ok {
-			var err error
-			value, err = parseNumber(v.(string))
+			n, err := parseNumber(v.(string))
 			if err != nil {
 				return result, err
 			}
+			value = &Number{N: n}
 		} else if v, ok := attr["B"]; ok {
-			value = []byte(v.(string))
+			value = &Byte{B: []byte(v.(string))}
 		} else {
 			var first string
 			for k, _ := range attr {
@@ -118,48 +199,6 @@ func parseNumber(value string) (number interface{}, err error) {
 		number, err = strconv.ParseInt(value, 10, 64)
 	}
 	return
-}
-
-func fieldToDynamoString(v reflect.Value) (typeId string, value string, err error) {
-	if v.Kind() == reflect.Interface || v.Kind() == reflect.Ptr {
-		v = v.Elem()
-	}
-
-	switch v.Kind() {
-
-	case reflect.String:
-		return "S", v.Interface().(string), nil
-
-	case reflect.Int:
-		return "N", strconv.FormatInt(int64(v.Interface().(int)), 10), nil
-	case reflect.Int8:
-		return "N", strconv.FormatInt(int64(v.Interface().(int8)), 10), nil
-	case reflect.Int16:
-		return "N", strconv.FormatInt(int64(v.Interface().(int16)), 10), nil
-	case reflect.Int32:
-		return "N", strconv.FormatInt(int64(v.Interface().(int32)), 10), nil
-	case reflect.Int64:
-		return "N", strconv.FormatInt(v.Interface().(int64), 10), nil
-
-	case reflect.Uint:
-		return "N", strconv.FormatUint(uint64(v.Interface().(uint)), 10), nil
-	case reflect.Uint8:
-		return "N", strconv.FormatUint(uint64(v.Interface().(uint8)), 10), nil
-	case reflect.Uint16:
-		return "N", strconv.FormatUint(uint64(v.Interface().(uint16)), 10), nil
-	case reflect.Uint32:
-		return "N", strconv.FormatUint(uint64(v.Interface().(uint32)), 10), nil
-	case reflect.Uint64:
-		return "N", strconv.FormatUint(v.Interface().(uint64), 10), nil
-
-	case reflect.Float32:
-		return "N", strconv.FormatFloat(float64(v.Interface().(float32)), 'f', -1, 32), nil
-	case reflect.Float64:
-		return "N", strconv.FormatFloat(v.Interface().(float64), 'f', -1, 64), nil
-
-	}
-
-	return "", "", &json.MarshalerError{Type: v.Type()}
 }
 
 type UnsupportedTypeError struct {
