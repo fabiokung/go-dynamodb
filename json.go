@@ -72,6 +72,10 @@ func NewField(value interface{}) (Field, error) {
 		v = v.Elem()
 	}
 
+	if !v.IsValid() {
+		return nil, nil
+	}
+
 	switch v.Kind() {
 	case reflect.String:
 		return &String{S: value.(string)}, nil
