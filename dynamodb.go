@@ -44,14 +44,14 @@ func NewTable(name string, region *Region, awsAccessKeyId string,
 	return &Table{name, region, k, s, debugMode}
 }
 
-func (t *Table) UpdateItem(key interface{}, item map[string]interface{}) error {
+func (t *Table) UpdateItem(key interface{}, item map[string]interface{}) (uint64, error) {
 	k, err := NewField(key)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	attrs, err := valuesToAttributeMap(item)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	r := new(UpdateItemRequest)
@@ -60,12 +60,21 @@ func (t *Table) UpdateItem(key interface{}, item map[string]interface{}) error {
 	r.AttributeUpdates = attrs
 	r.ReturnValues = "UPDATED_OLD"
 
-	_, err = t.doDynamoRequest("UpdateItem", r)
+	rawResp, err := t.doDynamoRequest("UpdateItem", r)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
-	return nil
+	type UpdateItemResponse struct {
+		ConsumedCapacityUnits uint64
+	}
+
+	resp := new(UpdateItemResponse)
+	err = json.Unmarshal(rawResp, &resp)
+	if err != nil {
+		return 0, err
+	}
+	return resp.ConsumedCapacityUnits, nil
 }
 
 func (t *Table) Query(key interface{}, consistent bool) ([]map[string]interface{}, error) {

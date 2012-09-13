@@ -104,7 +104,7 @@ type UpdateItemRequest struct {
 }
 
 type Attribute struct {
-	Value Field `json:",omitempty"`
+	Value  Field  `json:",omitempty"`
 	Action string `json:",omitempty"`
 }
 
