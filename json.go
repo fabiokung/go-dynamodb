@@ -104,15 +104,21 @@ type UpdateItemRequest struct {
 }
 
 type Attribute struct {
-	Value Field
+	Value Field `json:",omitempty"`
+	Action string `json:",omitempty"`
 }
 
 func valuesToAttributeMap(item map[string]interface{}) (map[string]Attribute, error) {
 	attrs := make(map[string]Attribute, len(item))
 	for n, v := range item {
+		if v == nil {
+			attrs[n] = Attribute{Action: "DELETE"}
+			continue
+		}
+
 		f, err := NewField(v)
 		if err != nil {
-			return nil, err
+			return attrs, err
 		}
 
 		attrs[n] = Attribute{Value: f}
