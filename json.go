@@ -152,14 +152,14 @@ type QueryResponse struct {
 // GetItem
 
 type GetItemRequest struct {
-	TableName string
-	Key Key
+	TableName       string
+	Key             Key
 	AttributesToGet []string `json:",omitempty"`
-	ConsistentRead bool `json:",omitempty"`
+	ConsistentRead  bool     `json:",omitempty"`
 }
 
 type GetItemResponse struct {
-	Item Item
+	Item                  Item
 	ConsumedCapacityUnits float64
 }
 
@@ -219,7 +219,6 @@ func itemsToFields(item map[string]interface{}) (map[string]Field, error) {
 
 	return result, nil
 }
-
 
 func parseNumber(value string) (Field, error) {
 	if strings.Contains(value, ".") {

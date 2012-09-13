@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"github.com/bmizerany/aws4"
-	"log"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"net/http/httputil"
 	"time"
@@ -29,16 +29,19 @@ var (
 )
 
 type Table struct {
-	name    string
-	region  *Region
-	keys    *aws4.Keys
-	service *aws4.Service
+	name      string
+	region    *Region
+	keys      *aws4.Keys
+	service   *aws4.Service
+	debugMode bool // causes requests to be dumped
 }
 
-func NewTable(name string, region *Region, awsAccessKeyId string, awsSecretAccessKey string) *Table {
+func NewTable(name string, region *Region, awsAccessKeyId string,
+	awsSecretAccessKey string, debugMode bool) *Table {
+
 	k := &aws4.Keys{AccessKey: awsAccessKeyId, SecretKey: awsSecretAccessKey}
 	s := &aws4.Service{Name: "dynamodb", Region: region.name}
-	return &Table{name, region, k, s}
+	return &Table{name, region, k, s, debugMode}
 }
 
 func (t *Table) UpdateItem(key interface{}, item map[string]interface{}) error {
@@ -76,7 +79,6 @@ func (t *Table) Query(key interface{}, consistent bool) ([]map[string]interface{
 	r.HashKeyValue = k
 	r.ConsistentRead = consistent
 
-
 	rawResp, err := t.doDynamoRequest("Query", r)
 	if err != nil {
 		return nil, err
@@ -104,7 +106,6 @@ func (t *Table) GetItem(key interface{}, consistent bool) (map[string]interface{
 	r.TableName = t.name
 	r.Key = Key{HashKeyElement: k}
 	r.ConsistentRead = consistent
-
 
 	rawResp, err := t.doDynamoRequest("GetItem", r)
 	if err != nil {
@@ -140,11 +141,13 @@ func (t *Table) doDynamoRequest(operation string, body interface{}) ([]byte, err
 		return nil, err
 	}
 
-	out, err := httputil.DumpRequestOut(req, true)
-	if err != nil {
-		return nil, err
+	if t.debugMode {
+		out, err := httputil.DumpRequestOut(req, true)
+		if err != nil {
+			return nil, err
+		}
+		log.Println(string(out))
 	}
-	log.Println(string(out))
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
