@@ -18,15 +18,27 @@ type Field interface {
 	Value() interface{}
 }
 
-type Number struct {
-	N interface{} `json:",string"`
+type Int struct {
+	N int64 `json:",string"`
 }
 
-func (n *Number) Type() string {
+func (n *Int) Type() string {
 	return "N"
 }
 
-func (n *Number) Value() interface{} {
+func (n *Int) Value() interface{} {
+	return n.N
+}
+
+type Float struct {
+	N float64 `json:",string"`
+}
+
+func (n *Float) Type() string {
+	return "N"
+}
+
+func (n *Float) Value() interface{} {
 	return n.N
 }
 
@@ -66,8 +78,10 @@ func NewField(value interface{}) (Field, error) {
 
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32,
 		reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16,
-		reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64:
-		return &Number{N: value}, nil
+		reflect.Uint32, reflect.Uint64:
+		return &Int{N: value.(int64)}, nil
+	case reflect.Float32, reflect.Float64:
+		return &Float{N: value.(float64)}, nil
 	}
 
 	// TODO: []byte
@@ -130,24 +144,38 @@ type QueryAttributes struct {
 
 type QueryResponse struct {
 	Count                 int
-	Items                 []QueryItem
+	Items                 []Item
 	LastEvaluatedKey      Key
-	ConsumedCapacityUnits int
+	ConsumedCapacityUnits float64
 }
 
-type QueryItem struct {
-	Item map[string]Field
+// GetItem
+
+type GetItemRequest struct {
+	TableName string
+	Key Key
+	AttributesToGet []string `json:",omitempty"`
+	ConsistentRead bool `json:",omitempty"`
 }
 
-func (qi *QueryItem) Map() map[string]interface{} {
-	r := make(map[string]interface{}, len(qi.Item))
-	for n, f := range qi.Item {
+type GetItemResponse struct {
+	Item Item
+	ConsumedCapacityUnits float64
+}
+
+type Item struct {
+	Fields map[string]Field
+}
+
+func (qi *Item) Map() map[string]interface{} {
+	r := make(map[string]interface{}, len(qi.Fields))
+	for n, f := range qi.Fields {
 		r[n] = f.Value()
 	}
 	return r
 }
 
-func (q *QueryItem) UnmarshalJSON(data []byte) error {
+func (q *Item) UnmarshalJSON(data []byte) error {
 	var items map[string]interface{}
 	if err := json.Unmarshal(data, &items); err != nil {
 		return err
@@ -157,7 +185,7 @@ func (q *QueryItem) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
-	q.Item = fields
+	q.Fields = fields
 	return nil
 }
 
@@ -170,11 +198,11 @@ func itemsToFields(item map[string]interface{}) (map[string]Field, error) {
 		if v, ok := attr["S"]; ok {
 			value = &String{S: v.(string)}
 		} else if v, ok := attr["N"]; ok {
-			n, err := parseNumber(v.(string))
+			var err error
+			value, err = parseNumber(v.(string))
 			if err != nil {
 				return result, err
 			}
-			value = &Number{N: n}
 		} else if v, ok := attr["B"]; ok {
 			value = &Byte{B: []byte(v.(string))}
 		} else {
@@ -192,13 +220,21 @@ func itemsToFields(item map[string]interface{}) (map[string]Field, error) {
 	return result, nil
 }
 
-func parseNumber(value string) (number interface{}, err error) {
+
+func parseNumber(value string) (Field, error) {
 	if strings.Contains(value, ".") {
-		number, err = strconv.ParseFloat(value, 64)
-	} else {
-		number, err = strconv.ParseInt(value, 10, 64)
+		n, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return nil, err
+		}
+		return &Float{N: n}, nil
 	}
-	return
+
+	n, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return nil, err
+	}
+	return &Int{N: n}, nil
 }
 
 type UnsupportedTypeError struct {

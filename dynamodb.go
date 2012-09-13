@@ -57,7 +57,7 @@ func (t *Table) UpdateItem(key interface{}, item map[string]interface{}) error {
 	r.AttributeUpdates = attrs
 	r.ReturnValues = "UPDATED_OLD"
 
-	_, err = t.doDynamoRequest("PutItem", r)
+	_, err = t.doDynamoRequest("UpdateItem", r)
 	if err != nil {
 		return err
 	}
@@ -92,6 +92,31 @@ func (t *Table) Query(key interface{}, consistent bool) ([]map[string]interface{
 		items[i] = item.Map()
 	}
 	return items, nil
+}
+
+func (t *Table) GetItem(key interface{}, consistent bool) (map[string]interface{}, error) {
+	k, err := NewField(key)
+	if err != nil {
+		return nil, err
+	}
+
+	r := new(GetItemRequest)
+	r.TableName = t.name
+	r.Key = Key{HashKeyElement: k}
+	r.ConsistentRead = consistent
+
+
+	rawResp, err := t.doDynamoRequest("GetItem", r)
+	if err != nil {
+		return nil, err
+	}
+	resp := new(GetItemResponse)
+	err = json.Unmarshal(rawResp, &resp)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.Item.Map(), nil
 }
 
 func (t *Table) doDynamoRequest(operation string, body interface{}) ([]byte, error) {
