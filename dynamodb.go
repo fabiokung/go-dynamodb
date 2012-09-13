@@ -44,7 +44,7 @@ func NewTable(name string, region *Region, awsAccessKeyId string,
 	return &Table{name, region, k, s, debugMode}
 }
 
-func (t *Table) UpdateItem(key interface{}, item map[string]interface{}) (uint64, error) {
+func (t *Table) UpdateItem(key interface{}, item map[string]interface{}) (float64, error) {
 	k, err := NewField(key)
 	if err != nil {
 		return 0, err
@@ -66,7 +66,7 @@ func (t *Table) UpdateItem(key interface{}, item map[string]interface{}) (uint64
 	}
 
 	type UpdateItemResponse struct {
-		ConsumedCapacityUnits uint64
+		ConsumedCapacityUnits float64
 	}
 
 	resp := new(UpdateItemResponse)
