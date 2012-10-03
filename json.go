@@ -93,6 +93,23 @@ func NewField(value interface{}) (Field, error) {
 	return nil, &json.MarshalerError{Type: v.Type()}
 }
 
+func fieldMapToValues(attrs map[string]Field) map[string]interface{} {
+	item := make(map[string]interface{}, len(attrs))
+	for n, a := range attrs {
+		item[n] = a.Value()
+	}
+	return item
+}
+
+// DeleteItem
+
+type DeleteItemRequest struct {
+	TableName    string
+	Key          Key
+	Expected     map[string]Attribute `json:",omitempty"`
+	ReturnValues string
+}
+
 // UpdateItem
 
 type UpdateItemRequest struct {

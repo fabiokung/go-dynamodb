@@ -44,14 +44,43 @@ func NewTable(name string, region *Region, awsAccessKeyId string,
 	return &Table{name, region, k, s, debugMode}
 }
 
-func (t *Table) UpdateItem(key interface{}, item map[string]interface{}) (float64, error) {
+func (t *Table) DeleteItem(key interface{}) (map[string]interface{}, float64, error) {
 	k, err := NewField(key)
 	if err != nil {
-		return 0, err
+		return nil, 0, err
+	}
+
+	r := new(DeleteItemRequest)
+	r.TableName = t.name
+	r.Key = Key{HashKeyElement: k}
+	r.ReturnValues = "ALL_OLD"
+
+	rawResp, err := t.doDynamoRequest("DeleteItem", r)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	type DeleteItemResponse struct {
+		Attributes            map[string]Field
+		ConsumedCapacityUnits float64
+	}
+
+	resp := new(DeleteItemResponse)
+	err = json.Unmarshal(rawResp, resp)
+	if err != nil {
+		return nil, 0, err
+	}
+	return fieldMapToValues(resp.Attributes), resp.ConsumedCapacityUnits, nil
+}
+
+func (t *Table) UpdateItem(key interface{}, item map[string]interface{}) (map[string]interface{}, float64, error) {
+	k, err := NewField(key)
+	if err != nil {
+		return nil, 0, err
 	}
 	attrs, err := valuesToAttributeMap(item)
 	if err != nil {
-		return 0, err
+		return nil, 0, err
 	}
 
 	r := new(UpdateItemRequest)
@@ -62,19 +91,20 @@ func (t *Table) UpdateItem(key interface{}, item map[string]interface{}) (float6
 
 	rawResp, err := t.doDynamoRequest("UpdateItem", r)
 	if err != nil {
-		return 0, err
+		return nil, 0, err
 	}
 
 	type UpdateItemResponse struct {
+		Attributes            map[string]Field
 		ConsumedCapacityUnits float64
 	}
 
 	resp := new(UpdateItemResponse)
-	err = json.Unmarshal(rawResp, &resp)
+	err = json.Unmarshal(rawResp, resp)
 	if err != nil {
-		return 0, err
+		return nil, 0, err
 	}
-	return resp.ConsumedCapacityUnits, nil
+	return fieldMapToValues(resp.Attributes), resp.ConsumedCapacityUnits, nil
 }
 
 func (t *Table) Query(key interface{}, consistent bool) ([]map[string]interface{}, error) {
