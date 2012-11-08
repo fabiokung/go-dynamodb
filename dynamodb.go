@@ -22,7 +22,8 @@ func (r *Region) url() string {
 
 var (
 	USEast1      *Region = &Region{"us-east-1", "dynamodb.us-east-1.amazonaws.com"}
-	USWest1      *Region = &Region{"us-west-1", "dynamodb.us-west-2.amazonaws.com"}
+	USWest1      *Region = &Region{"us-west-1", "dynamodb.us-west-1.amazonaws.com"}
+	USWest2      *Region = &Region{"us-west-2", "dynamodb.us-west-2.amazonaws.com"}
 	EUWest1      *Region = &Region{"eu-west-1", "dynamodb.eu-west-1.amazonaws.com"}
 	APNorthEast1 *Region = &Region{"ap-northeast-1", "dynamodb.ap-northeast-1.amazonaws.com"}
 	APSouthEast1 *Region = &Region{"ap-southeast-1", "dynamodb.ap-southeast-1.amazonaws.com"}
