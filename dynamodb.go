@@ -27,6 +27,8 @@ var (
 	EUWest1      *Region = &Region{"eu-west-1", "dynamodb.eu-west-1.amazonaws.com"}
 	APNorthEast1 *Region = &Region{"ap-northeast-1", "dynamodb.ap-northeast-1.amazonaws.com"}
 	APSouthEast1 *Region = &Region{"ap-southeast-1", "dynamodb.ap-southeast-1.amazonaws.com"}
+	APSouthEast2 *Region = &Region{"ap-southeast-2", "dynamodb.ap-southeast-2.amazonaws.com"}
+	SAEast1      *Region = &Region{"sa-east-1", "dynamodb.sa-east-1.amazonaws.com"}
 )
 
 type Table struct {
